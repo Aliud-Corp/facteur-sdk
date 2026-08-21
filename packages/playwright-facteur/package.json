@@ -1,0 +1,51 @@
+{
+  "name": "playwright-facteur",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Receive email in your Playwright tests: a fixture that waits, matchers that assert, and the message attached to the report",
+  "license": "MIT",
+  "keywords": [
+    "playwright",
+    "email testing",
+    "e2e",
+    "otp",
+    "2fa",
+    "qa",
+    "test automation",
+    "fixture"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.mts",
+      "default": "./index.mjs"
+    }
+  },
+  "files": [
+    "index.mjs",
+    "index.d.mts",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@facteur-eu/sdk": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@playwright/test": ">=1.40.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/facteur-eu/facteur.git",
+    "directory": "packages/playwright-facteur"
+  },
+  "homepage": "https://facteur.eu",
+  "bugs": {
+    "url": "https://github.com/facteur-eu/facteur/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

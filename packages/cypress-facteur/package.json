@@ -1,0 +1,57 @@
+{
+  "name": "cypress-facteur",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Receive email in your Cypress tests: chainable commands, and the API key kept out of the browser",
+  "license": "MIT",
+  "keywords": [
+    "cypress",
+    "email testing",
+    "e2e",
+    "otp",
+    "2fa",
+    "qa",
+    "test automation",
+    "cypress-plugin"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./commands.d.mts",
+      "default": "./commands.mjs"
+    },
+    "./plugin": {
+      "types": "./plugin.d.mts",
+      "default": "./plugin.mjs"
+    }
+  },
+  "files": [
+    "commands.mjs",
+    "commands.d.mts",
+    "plugin.mjs",
+    "plugin.d.mts",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@facteur-eu/sdk": "^1.0.0"
+  },
+  "peerDependencies": {
+    "cypress": ">=12.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/facteur-eu/facteur.git",
+    "directory": "packages/cypress-facteur"
+  },
+  "homepage": "https://facteur.eu",
+  "bugs": {
+    "url": "https://github.com/facteur-eu/facteur/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

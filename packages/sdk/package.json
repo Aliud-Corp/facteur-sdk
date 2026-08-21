@@ -1,0 +1,51 @@
+{
+  "name": "@facteur-eu/sdk",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Receive email in your test suite, and read it back without a sleep loop",
+  "license": "MIT",
+  "keywords": [
+    "email testing",
+    "e2e",
+    "otp",
+    "2fa",
+    "smtp",
+    "qa",
+    "test automation",
+    "mailbox"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./facteur.d.mts",
+      "default": "./facteur.mjs"
+    },
+    "./totp": {
+      "types": "./totp.d.mts",
+      "default": "./totp.mjs"
+    }
+  },
+  "files": [
+    "facteur.mjs",
+    "facteur.d.mts",
+    "totp.mjs",
+    "totp.d.mts",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/facteur-eu/facteur.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://facteur.eu",
+  "bugs": {
+    "url": "https://github.com/facteur-eu/facteur/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

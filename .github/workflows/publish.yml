@@ -1,0 +1,66 @@
+# Publishing, from the public repository and nowhere else.
+#
+# The provenance npm attaches to a package names the repository the publication ran from,
+# and that name is shown on the package page. Publishing from the source repository would
+# put its address in front of every visitor, which is the reason this workflow lives here
+# rather than there.
+#
+# Manual on purpose. A publication is irreversible — npm keeps a version forever, and
+# unpublishing is bounded to 72 hours — so it is an act somebody performs, never a
+# consequence of a merge.
+
+name: publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Which package to publish
+        required: true
+        type: choice
+        options:
+          - '@facteur-eu/sdk'
+          - playwright-facteur
+          - cypress-facteur
+          - create-facteur
+
+permissions:
+  # `id-token: write` is what mints the OIDC token npm trades for provenance. Naming any
+  # permission sets every other one to none, so `contents: read` is written rather than
+  # inherited.
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: ${{ inputs.package }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Locate the package
+        id: locate
+        run: |
+          case "${{ inputs.package }}" in
+            '@facteur-eu/sdk')       dir=packages/sdk ;;
+            playwright-facteur)   dir=packages/playwright-facteur ;;
+            cypress-facteur)      dir=packages/cypress-facteur ;;
+            create-facteur)       dir=packages/create-facteur ;;
+            *) echo "unknown package"; exit 1 ;;
+          esac
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
+      # The tarball is what ships. Listing it before publishing is the last chance to see
+      # a file that should not leave, and it costs a second.
+      - name: What the tarball carries
+        working-directory: ${{ steps.locate.outputs.dir }}
+        run: npm pack --dry-run
+
+      - name: Publish
+        working-directory: ${{ steps.locate.outputs.dir }}
+        run: npm publish --provenance --access public

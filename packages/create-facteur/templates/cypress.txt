@@ -1,0 +1,50 @@
+/**
+ * Written by `npm create facteur`.
+ *
+ * Two tests. The first one passes right now and proves your key reaches your inbox. The
+ * second one is the real one, and it waits for mail your application has to send: turn
+ * `it.skip` into `it` once you have wired it up.
+ *
+ * Both go through a Node task, because Cypress runs your test inside the browser and an
+ * API key has no business in a page. Add this to `cypress.config.js`:
+ *
+ *   setupNodeEvents(on) {
+ *     const call = (path, body) =>
+ *       fetch('https://api.facteur.eu' + path, {
+ *         method: body ? 'POST' : 'GET',
+ *         headers: {
+ *           authorization: 'Bearer ' + process.env.FACTEUR_API_KEY,
+ *           ...(body ? { 'content-type': 'application/json' } : {}),
+ *         },
+ *         body: body ? JSON.stringify(body) : undefined,
+ *       }).then((response) => response.json());
+ *
+ *     on('task', {
+ *       facteurInboxes: () => call('/v1/inboxes'),
+ *       facteurWait: ({ sentTo }) =>
+ *         call('/v1/messages/search', { inbox: '__INBOX__', sentTo, wait: 30000 })
+ *           .then(({ messages }) => messages[0] ?? null),
+ *     });
+ *   }
+ */
+
+it('the key reaches the inbox', () => {
+  cy.task('facteurInboxes').should((inboxes) => {
+    expect(inboxes, 'the API did not answer a list').to.be.an('array');
+    expect(inboxes.map((one) => one.id), 'this key does not reach __INBOX__').to.include('__INBOX__');
+  });
+});
+
+it.skip('the signup email carries a one-time code', () => {
+  // The attempt number keeps a retry apart from the run before it.
+  const tag = 'signup-a' + (Cypress.currentRetry ?? 0) + '-' + Date.now();
+
+  // Replace this line with whatever makes your application send the mail.
+  cy.log('Send your signup email to ' + tag + '@__INBOX__.inbox.facteur.eu');
+
+  // The timeout stays above the API wait: 40s here for a 30s wait.
+  cy.task('facteurWait', { sentTo: tag }, { timeout: 40000 }).should((message) => {
+    expect(message, 'no mail arrived within 30s').to.not.be.null;
+    expect(message.otp).to.match(/^[0-9]{6}$/);
+  });
+});

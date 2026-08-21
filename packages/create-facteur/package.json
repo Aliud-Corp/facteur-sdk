@@ -1,0 +1,40 @@
+{
+  "name": "create-facteur",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "From an empty repository to a first passing test, in one command",
+  "license": "MIT",
+  "keywords": [
+    "email testing",
+    "e2e",
+    "playwright",
+    "cypress",
+    "scaffold",
+    "qa"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "create-facteur": "./index.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "templates",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/facteur-eu/facteur.git",
+    "directory": "packages/create-facteur"
+  },
+  "homepage": "https://facteur.eu",
+  "bugs": {
+    "url": "https://github.com/facteur-eu/facteur/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

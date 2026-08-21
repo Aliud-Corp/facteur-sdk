@@ -1,0 +1,55 @@
+import { expect, test } from '@playwright/test';
+
+/**
+ * Written by `npm create facteur`.
+ *
+ * Two tests. The first one passes right now and proves your key reaches your inbox. The
+ * second one is the real one, and it waits for mail your application has to send: remove
+ * the `fixme` line once you have wired it up.
+ */
+
+const KEY = process.env.FACTEUR_API_KEY!;
+const INBOX = '__INBOX__';
+const DOMAIN = `${INBOX}.inbox.facteur.eu`;
+
+const call = (path: string, body?: unknown) =>
+  fetch(`https://api.facteur.eu${path}`, {
+    method: body ? 'POST' : 'GET',
+    headers: {
+      authorization: `Bearer ${KEY}`,
+      ...(body ? { 'content-type': 'application/json' } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  }).then((response) => response.json());
+
+test('the key reaches the inbox', async () => {
+  const inboxes = await call('/v1/inboxes');
+
+  expect(Array.isArray(inboxes), `the API answered ${JSON.stringify(inboxes)}`).toBe(true);
+  expect(
+    inboxes.map((one: { id: string }) => one.id),
+    `this key does not reach ${INBOX}`,
+  ).toContain(INBOX);
+});
+
+test('the signup email carries a one-time code', async () => {
+  test.fixme(true, 'Remove this line once your application sends the mail below.');
+
+  const tag = `run-${Date.now()}`;
+
+  /*
+   * Issued before the action, on purpose: the request stays open and answers the moment
+   * the mail lands. Started afterwards, it would chase a message that may already have
+   * been parsed.
+   */
+  const arriving = call('/v1/messages/search', { inbox: INBOX, sentTo: `signup+${tag}`, wait: 30_000 });
+
+  // Replace this line with whatever makes your application send the mail.
+  console.log(`Send your signup email to signup+${tag}@${DOMAIN}`);
+
+  const { messages } = await arriving;
+
+  // `status` before anything derived from the body: a message exists before it is parsed.
+  expect(messages[0]?.status, 'no mail arrived within 30s').toBe('parsed');
+  expect(messages[0].otp).toMatch(/^\d{6}$/);
+});
