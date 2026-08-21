@@ -42,6 +42,18 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
+          # Never cache in a release build: what gets published has to come from this
+          # checkout and from nothing else.
+          package-manager-cache: false
+
+      # Trusted publishing needs npm 11.5.1 or later, and Node 22 ships 10.9. Without it
+      # npm does not know how to trade the OIDC token, sends an unauthenticated request,
+      # and the registry answers `404 Not Found` on the PUT — which reads as "the package
+      # does not exist" and means "you are nobody". That cost one failed run.
+      - name: npm new enough to trade an OIDC token
+        run: |
+          npm install -g npm@latest
+          npm --version
 
       - name: Locate the package
         id: locate
