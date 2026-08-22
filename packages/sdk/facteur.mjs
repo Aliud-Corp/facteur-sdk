@@ -15,10 +15,10 @@
  * part worth the extra request — *what did arrive instead*. A red pipeline should not
  * require opening the documentation.
  *
- * **2. It writes its own sentences, in English.** The API returns a stable
- * `error.code` and a human `error.message`, and that message is **in French today**;
- * The published API reference says so, and tells callers not to parse it. Passing it
- * through would leak French into an English CI log, so the codes are branched on and the
+ * **2. It writes its own sentences.** The API returns a stable `error.code` and a
+ * human `error.message` that nothing obliges it to keep as it stands; the published API
+ * reference says so, and tells callers not to parse it. Passing it through would tie this
+ * client's output to a sentence we reword freely, so the codes are branched on and the
  * words are ours.
  *
  * **3. Concurrent waits are queued client-side.** The API refuses past twenty open waits
