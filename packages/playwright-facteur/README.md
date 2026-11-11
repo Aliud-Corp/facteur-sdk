@@ -1,89 +1,103 @@
 # playwright-facteur
 
-Receive email in your Playwright tests, and assert on what arrived.
+Receive email in your Playwright tests. Your application sends a mail to an address of a Facteur inbox, and the test waits for it, reads its code, its links and its attachments, and finds the mail in the Playwright report.
 
-```ts
-import { test, expect } from 'playwright-facteur';
-
-test('the verification link activates the account', async ({ page, inbox }) => {
-  await page.goto('/signup');
-  await page.getByLabel('Email').fill(inbox.address('signup'));
-  await page.getByRole('button', { name: 'Create my account' }).click();
-
-  const message = await inbox.waitFor();
-  expect(message).toHaveOtp();
-
-  await page.goto(message.links[0].href);
-  await expect(page.getByText('Account verified')).toBeVisible();
-});
-```
-
-No `sleep`, no retry loop, no regular expression pulling a six-digit code out of an HTML
-body. The wait happens on the server; the extraction happens when the mail is received.
+Needs `@playwright/test` 1.60.0 or later, and Node 22 or later. It builds on `@facteur-eu/sdk`.
 
 ## Install
 
 ```sh
-npm i -D playwright-facteur
-export FACTEUR_API_KEY=fk_...
+npm install --save-dev playwright-facteur @playwright/test
 ```
 
-Node 20 or later, and Playwright 1.40 or later. Mint the key in the application under
-**Settings → API keys**.
-
-## What you get
-
-**`inbox`** is a fixture, one address per test. The tag carries the worker index, the
-retry number and the test title, so `--workers=16` collides with nothing. The retry
-matters: without it, a retried test reads the mail its own first attempt received, and
-passes for the wrong reason exactly when something is already flaky.
-
-```ts
-inbox.address()             // test+the-title-w3r0-lz9k@j3k9x2mq.inbox.facteur.eu
-inbox.address('billing')    // billing+the-title-w3r0-lz9k@…
-await inbox.waitFor({ subject: /invoice/ })
-```
-
-**Matchers**, retried by Playwright's own engine and inheriting the test's timeout:
-
-```ts
-await expect(inbox).toReceiveEmail({ subject: /verification/ });
-expect(message).toHaveOtp('882314');
-expect(message).toHaveLinkTo('app.example.com');
-expect(message).toHaveAttachment('invoice.pdf');
-```
-
-`toHaveOtp` fails with a different sentence when the message is not parsed yet, because
-"there is no code in this mail" and "the code is not extracted yet" are different
-problems and an `undefined` cannot tell them apart.
-
-**The message in the report.** Every awaited message is attached to the test: the JSON
-for the extracted fields, the HTML body to open. When a test fails, the mail that
-actually arrived is next to the failure.
-
-## One inbox per worker, one address per test
-
-Every address ending in the inbox's domain arrives, with nothing to create first, so a
-sub-address isolates a test as well as a whole inbox would.
-
-It also survives your plan. Creating an inbox per test walks into the inbox ceiling (one
-on the free plan, three on Solo), so that arrangement works on a laptop and fails the
-first time the suite runs on the plan you pay for.
-
-Name an existing inbox to skip creation entirely, which is what most suites end up doing:
+Create an API key in the application, under Settings, API keys. A key that reads and writes mail (`ws:read` and `ws:write`) is enough. Keep it, and the inbox your tests use, in the environment:
 
 ```sh
-export FACTEUR_INBOX=j3k9x2mq
+export FACTEUR_API_KEY=fk_...
+export FACTEUR_INBOX=<the id of the inbox>
 ```
 
-Without it, the plugin opens one per worker and destroys it at the end. That costs
-nothing: an operation is a message received, never a call.
+## Write a test
 
-## Parallel runs
+Import `test` and `expect` from `playwright-facteur` instead of `@playwright/test`.
 
-The API refuses past twenty open waits per organization. The client keeps its own queue,
-sized from your worker count, so the surplus waits its turn instead of coming back as a
-`429`.
+```ts
+import { expect, test } from 'playwright-facteur'
+
+test('signs up with a confirmation code', async ({ page, inbox }) => {
+    await page.goto('/signup')
+    await page.getByLabel('Email').fill(inbox.address('signup'))
+    await page.getByRole('button', { name: 'Create account' }).click()
+
+    await expect(inbox).toReceiveEmail({ subject: 'confirmation code' })
+    await expect(inbox).toHaveLinkTo('/confirm')
+    await page.getByLabel('Code').fill(inbox.latest!.otp!)
+})
+```
+
+`inbox.address('signup')` is an address that belongs to this test alone, such as `signup+sign-up-with-a-confirmation-code-1x2y3z-p0r0-m3k9q@<id>.inbox.facteur.eu`. Your application can send to any address of the inbox without creating anything first, so tests share one inbox and never read each other's mail.
+
+## Fixtures
+
+| Fixture | Scope | What it is |
+| --- | --- | --- |
+| `inbox` | test | The inbox seen through the address of this test. |
+| `facteurInbox` | worker | The inbox of the worker. `FACTEUR_INBOX` names an existing one, which is what a plan with a single inbox needs. Without it, each worker opens an inbox (in `FACTEUR_WORKSPACE`, or in the default workspace if the key may read the organization) and deletes it when the worker ends. |
+| `facteur` | worker | The `Facteur` client of the SDK, with the key from `FACTEUR_API_KEY` and the address from `FACTEUR_BASE_URL`. |
+
+An `inbox` has:
+
+| Member | Does |
+| --- | --- |
+| `address(local?)` | The address to send the mail under test to. `local` is the text before the `+`, `test` by default. |
+| `waitFor(criteria?)` | Waits for a mail sent to this address, attaches it to the report and returns it. The criteria are the SDK's: `subject`, `body`, `sentFrom`, `otp`, `attachmentName`... plus `timeout` in milliseconds. |
+| `latest` | The last message `waitFor` returned in this test, or `null`. |
+| `messages()` | The last messages of the whole inbox, whatever their address. |
+| `tag` | The part after the `+` of the address. |
+
+## What isolates one test from another
+
+The tag in the address is built from four things:
+
+- the title of the test, and a short hash of its full path (project, file, groups), so two tests with the same title in two files differ;
+- the parallel slot, so two tests running at once differ;
+- the attempt number, so a test that Playwright replays does not read the mail its first attempt received;
+- the run, so a suite that keeps its inbox between runs does not read the mail of the previous run.
+
+## How long a test waits
+
+A wait lasts as long as what is left of the test's own timeout, less two seconds, with five minutes at most. When the mail does not come, the failure is written by this package, inside the test's timeout, instead of Playwright's message about a slow test:
+
+```
+No message matched {"subject":"Your invoice"} at test+<tag>@<id>.inbox.facteur.eu.
+Waited 6s. What did arrive: test+<tag>@<id>.inbox.facteur.eu, "Welcome" (parsed).
+```
+
+Pass `timeout` to wait less, for example to check that no mail was sent: `await expect(inbox).not.toReceiveEmail({ timeout: 3000 })`.
+
+## Matchers
+
+Each matcher takes a message or an inbox. With an inbox, it reads `inbox.latest`, the last message received in the test.
+
+| Matcher | Passes when |
+| --- | --- |
+| `toReceiveEmail(criteria?)` | A message matching the criteria reaches the address of the test. |
+| `toHaveOtp(code?)` | The message carries a one-time code, or this one. A message refused for want of plan fails with a message that says so. |
+| `toHaveLinkTo(text)` | A link of the message contains the text. Links are strings. |
+| `toHaveAttachment(fileName?)` | The message has an attachment, or one with this name. Embedded images such as a signature logo do not count. |
+
+## The report
+
+Each message `waitFor` returns is attached to the test in the report: `facteur-<message id>.json` holds the message as the API returned it, with its extracted code and links, and `facteur-<message id>.html.txt` holds the source of its HTML body, as plain text. The report never renders it: the HTML comes from whoever sent the mail, and a script in it would run in the report's page.
+
+## Environment
+
+| Variable | Use |
+| --- | --- |
+| `FACTEUR_API_KEY` | The API key. Required. |
+| `FACTEUR_INBOX` | The id of the inbox to use. Without it each worker opens its own. |
+| `FACTEUR_WORKSPACE` | The slug of the workspace in which workers open their inbox. |
+| `FACTEUR_BASE_URL` | The address of the API. Defaults to `https://api.facteur.eu`. |
 
 ## Licence
 

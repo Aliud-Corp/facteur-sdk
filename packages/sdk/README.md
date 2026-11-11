@@ -1,99 +1,105 @@
-# Facteur
+# @facteur-eu/sdk
 
-Receive email in your test suite, and read it back without a sleep loop.
+Read the emails Facteur receives for your tests. Your application sends a mail to an address of a Facteur inbox, and the SDK waits for it and hands you its code and its links.
 
-```ts
-import { Facteur } from '@facteur-eu/sdk';
-
-const facteur = new Facteur();                        // reads FACTEUR_API_KEY
-const inbox = await facteur.inboxes.create({ name: 'signup' });
-
-// Ask before you act: the request waits, and answers the moment the mail lands.
-const arriving = facteur.messages.waitFor({
-  inbox: inbox.id,
-  sentTo: facteur.addressFor(inbox, 'run-4821'),
-});
-
-await signUp(facteur.addressFor(inbox, 'run-4821'));  // your application
-
-const message = await arriving;
-expect(message.otp).toBe(await readCodeFromScreen());
-await facteur.inboxes.delete(inbox.id);
-```
-
-That is the whole thing. No polling, no retry loop, no regular expression pulling a
-six-digit code out of an HTML body: the wait happens on the server, and the extraction
-happens on reception.
+No runtime dependency. Node 22 or later.
 
 ## Install
 
 ```sh
-npm i -D @facteur-eu/sdk
+npm install --save-dev @facteur-eu/sdk
 ```
 
-Node 20 or later. **Zero dependencies**: a test suite does not want a dependency tree.
-
-## A key
-
-Mint one in the application, under **Settings → API keys**. Read-only is enough to
-receive and read mail; creating and destroying inboxes needs `ws:write`.
+Create an API key in the application, under Settings, API keys, and keep it in an environment variable:
 
 ```sh
 export FACTEUR_API_KEY=fk_...
 ```
 
-The client reads that variable by default. Pass `apiKey` explicitly if you would rather
-keep it somewhere else. Never write it into a file that gets committed.
+## Wait for a mail
 
-## What it does
+```ts
+import { Facteur, addressFor } from '@facteur-eu/sdk'
 
-| | |
-|---|---|
-| `inboxes.create({ name })` | Open an inbox. It lands in the default workspace unless you name one. |
-| `inboxes.delete(id)` | Destroy it. This is how you purge: one inbox per run costs nothing. |
-| `messages.waitFor(criteria)` | Wait for one message. **Rejects if none arrives** (see below). |
-| `messages.search(criteria)` | The same query without the insistence: every match, and a cursor. |
-| `attachments.download(id)` | The bytes. Each attachment also carries a `sha256:` checksum, so you can verify content without downloading it at all. |
-| `addressFor(inbox, tag)` | `test+run-4821@<inbox>.inbox.facteur.eu`. Every address ending in the inbox's domain arrives, with nothing to create first. |
-| `totp(secret)` | The six-digit code of a 2FA journey, so the phone can stay in the drawer. |
+const facteur = new Facteur() // reads FACTEUR_API_KEY
 
-## Three things worth knowing
+const inbox = await facteur.inboxes.create({ name: 'signup-tests', workspace: 'main' })
 
-**`waitFor` fails loudly.** It never hands back an empty list, because a list makes every
-caller write the same assertion and the suite that forgets goes green on a mail that
-never arrived. When it expires it says what it searched, how long it held, and *what
-landed instead*, which is usually the answer:
+// Any text before the @ works, so every test can use its own address in the same inbox.
+const address = addressFor(inbox, 'test-42', { local: 'signup' })
 
-```
-No message matched after 30s. Searched: {"inbox":"j3k9x2mq","sentTo":"signup+42"}.
-What did arrive: welcome@j3k9x2mq.inbox.facteur.eu · “Welcome aboard” (parsed).
+// ... your application sends the confirmation mail to `address` ...
+
+const message = await facteur.messages.waitFor({ inbox: inbox.id, sentTo: address, wait: 20_000 })
+console.log(message.otp, message.links)
+
+await facteur.inboxes.delete(inbox.id!)
 ```
 
-**Read `status` before anything derived from the body.** A message accepted over SMTP
-exists before it is parsed; for a few milliseconds it has no subject, no code and no
-links. `status` is what separates "there is no code in this message" from "the code is
-not extracted yet". `waitFor` only returns parsed messages by default.
+`waitFor` returns the newest message that matches. When none arrives in time it rejects with a `FacteurTimeout`, never with an empty list, so a suite cannot pass on a mail that never came. The error lists the last messages that did land in the inbox (`error.arrived`), which tells "the mail was never sent" from "the mail went to another address".
 
-**Parallel workers are handled for you.** The API refuses past twenty open waits per
-organization, which is one `--workers=24` away. The client queues the surplus rather
-than turning it into a `429`; raise or lower the ceiling with `maxConcurrentWaits`.
+## The client
+
+```ts
+new Facteur({ apiKey, baseUrl, fetch, timeoutMs, maxConcurrentWaits })
+```
+
+| Option | Default |
+| --- | --- |
+| `apiKey` | `FACTEUR_API_KEY`. Without a key the constructor throws and nothing is sent. |
+| `baseUrl` | `FACTEUR_BASE_URL`, then `https://api.facteur.eu` |
+| `fetch` | the global `fetch` |
+| `timeoutMs` | 120000, added to the wait of a search |
+| `maxConcurrentWaits` | 8 |
+
+| Call | Does |
+| --- | --- |
+| `inboxes.list()` | lists the inboxes the key reaches |
+| `inboxes.create({ name, workspace? })` | creates an inbox. Without `workspace`, the default workspace is looked up, which needs the `org:read` permission. A key made for a test suite usually lacks it, and the error then asks you to name the workspace. |
+| `inboxes.update(id, patch)` | changes an inbox (sent as `application/merge-patch+json`) |
+| `inboxes.delete(id)` | deletes an inbox and its messages |
+| `inboxes.messages(id, { limit?, cursor? })` | one page of the last messages: `{ messages, nextCursor }` |
+| `messages.search(criteria)` | one search (a `GET`, see "What a search sends"). Each message carries its text and HTML bodies and its headers, as `messages.get` returns it, so a link or a code is read without a second call. With `wait` (in milliseconds, 300000 at most) the server holds the request until a message matches. |
+| `messages.waitFor(criteria)` | waits 30 seconds by default and returns the newest match, bodies included |
+| `messages.get(id)` | one message, by its identifier |
+| `attachments.download(id)` | the bytes of an attachment, as an `ArrayBuffer` |
+| `workspaces.list()` | lists the workspaces the key reaches (needs `org:read`) |
+| `workspaces.get(slug)` | one workspace |
+| `workspaces.inboxes(slug)` | the inboxes of a workspace |
+| `extractors.list(inbox)` | lists the pointers saved on an inbox |
+| `extractors.create(inbox, { key, pattern, scope, label? })` | saves a pointer: a pattern, the part of the message it reads, and the key its value is written under |
+| `extractors.delete(inbox, id)` | deletes a pointer |
+| `extractors.test(inbox, { pattern, scope })` | tries a pattern on the messages of the inbox without saving it |
+| `extractors.suggest(inbox, { source, selection, offset })` | proposes patterns that find the selected text of a message |
+| `addressFor(inbox, tag, { local })` | an address of the inbox that carries your tag. An SMS inbox has a number and no address, and throws. |
+
+## What a search sends
+
+A search is a `GET` request, and each criterion is a parameter of its address (`/messages?inbox=ib_1&subject=Welcome`). The words you search for therefore appear in the address, and can be written in the logs of a proxy or a gateway between your machine and Facteur. Facteur keeps the parameters of this request out of its own logs. Search for an address, a subject or a code, and never for a secret.
+
+Each text has a longest allowed length, in characters: `inbox` 36, `workspace` 40, `sentTo` and `sentFrom` 254, `subject`, `body` and `attachmentName` 255, `otp` 16. A longer value is refused with the code `CRITERIA_INVALID` (status 400). A `cursor` is at most 64 characters, and a longer one is refused with `INVALID_CURSOR`, like any cursor Facteur did not issue: pass `nextCursor` back as you received it. A boolean is `true` or `false`, and `limit` and `wait` are numbers. A `wait` above 300000 milliseconds is brought down to 300000, and the search is not refused. `since` is an ISO 8601 date, such as `2026-11-03T10:00:00Z`.
+
+The API also takes the same criteria as a JSON body, on `POST /messages/search` (`searchMessagesByBody`), with the same limits, codes and answer. The SDK sends the `GET`; use the `POST` from another client when you do not want a criterion in an address.
 
 ## Errors
 
-Every failure is a `FacteurError` carrying `code`: the stable, machine-readable reason,
-and the thing to branch on. The message is written for whoever is reading a red pipeline.
+A refusal from the API becomes a `FacteurError` with three fields: `code` (the stable code to branch on), `status` and `body` (the raw `application/problem+json` answer). The `message` is a sentence written by the SDK, so it can say what to do.
 
 ```ts
-import { FacteurError, FacteurTimeout } from '@facteur-eu/sdk';
-
 try {
-  await facteur.messages.waitFor({ inbox, sentTo });
+    await facteur.messages.search({ inbox: 'ib_1' })
 } catch (error) {
-  if (error instanceof FacteurTimeout) {
-    // The mail did not arrive. That is a product failure, not an integration one.
-  }
+    if (error instanceof FacteurError && error.code === 'CRITERIA_UNKNOWN') {
+        // a typo in a criterion: the API refuses it instead of ignoring it
+    }
 }
 ```
+
+The client retries only what the API documents as safe to retry: a `429` (after the `Retry-After` it sends) and a `503` with `API_DRAINING` or `ATTACHMENT_STORE_UNAVAILABLE`. Three retries at most. Every other refusal is raised at once.
+
+## Many tests at once
+
+An organization may hold 20 open waits. A suite that runs 24 workers would hit that limit, so the client keeps at most 8 waits open and queues the others in its own process. Raise or lower `maxConcurrentWaits` to fit the organization.
 
 ## Licence
 

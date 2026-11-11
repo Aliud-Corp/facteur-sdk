@@ -1,13 +1,15 @@
 # Publishing, from the public repository and nowhere else.
 #
-# The provenance npm attaches to a package names the repository the publication ran from,
-# and that name is shown on the package page. Publishing from the source repository would
-# put its address in front of every visitor, which is the reason this workflow lives here
-# rather than there.
+# The provenance npm attaches to a package names the repository the publication ran from, and that
+# name is shown on the package page. The file name `publish.yml` is a join key: npm's trusted
+# publisher setting names this repository and this workflow file, and a rename turns the publication
+# into a `404 Not Found`.
 #
-# Manual on purpose. A publication is irreversible — npm keeps a version forever, and
-# unpublishing is bounded to 72 hours — so it is an act somebody performs, never a
-# consequence of a merge.
+# Manual on purpose. A publication is irreversible (npm keeps a version forever, and unpublishing
+# is bounded to 72 hours), so it is an act somebody performs, never a consequence of a push.
+# Publish in order, one package at a time: `@facteur-eu/sdk` first, since the plugins depend on it.
+#
+# No token and no secret: the publication trades the OIDC token of the run for the right to publish.
 
 name: publish
 
@@ -25,41 +27,49 @@ on:
           - create-facteur
 
 permissions:
-  # `id-token: write` is what mints the OIDC token npm trades for provenance. Naming any
-  # permission sets every other one to none, so `contents: read` is written rather than
-  # inherited.
+  # `id-token: write` mints the OIDC token npm trades for trusted publishing and provenance. Naming
+  # one permission sets every other to none, so `contents: read` is written rather than inherited.
   contents: read
   id-token: write
 
 jobs:
   publish:
     name: ${{ inputs.package }}
+    # A publication comes from main: the provenance names the commit, and a branch is not reviewed.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    env:
+      # Cypress's binary is not needed to compile the plugin, only its types.
+      CYPRESS_INSTALL_BINARY: '0'
     steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
         with:
-          node-version: 22
+          persist-credentials: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: 24
           registry-url: https://registry.npmjs.org
-          # Never cache in a release build: what gets published has to come from this
-          # checkout and from nothing else.
+          # Never cache in a release build: what gets published has to come from this checkout.
           package-manager-cache: false
 
-      # Trusted publishing needs npm 11.5.1 or later, and Node 22 ships 10.9. Without it
-      # npm does not know how to trade the OIDC token, sends an unauthenticated request,
-      # and the registry answers `404 Not Found` on the PUT — which reads as "the package
-      # does not exist" and means "you are nobody". That cost one failed run.
+      # Trusted publishing needs npm 11.5.1 or later. Without it npm does not know how to trade the
+      # OIDC token, sends an unauthenticated request, and the registry answers `404 Not Found` on
+      # the PUT, which reads as "the package does not exist" and means "you are nobody". The version
+      # is exact: `latest` would change what a release does without a commit here.
       - name: npm new enough to trade an OIDC token
         run: |
-          npm install -g npm@latest
+          npm install -g npm@11.19.0
           npm --version
 
       - name: Locate the package
         id: locate
+        env:
+          # Read through the environment: a `${{ }}` inside a script is pasted into it before the shell runs.
+          PACKAGE: ${{ inputs.package }}
         run: |
-          case "${{ inputs.package }}" in
-            '@facteur-eu/sdk')       dir=packages/sdk ;;
+          case "$PACKAGE" in
+            '@facteur-eu/sdk')    dir=packages/sdk ;;
             playwright-facteur)   dir=packages/playwright-facteur ;;
             cypress-facteur)      dir=packages/cypress-facteur ;;
             create-facteur)       dir=packages/create-facteur ;;
@@ -67,12 +77,32 @@ jobs:
           esac
           echo "dir=$dir" >> "$GITHUB_OUTPUT"
 
-      # The tarball is what ships. Listing it before publishing is the last chance to see
-      # a file that should not leave, and it costs a second.
+      # The plugins compile against the SDK: their lock file links `../sdk`, whose `dist/` must exist.
+      # `--ignore-scripts` on every install of this job: the job holds the right to publish (the OIDC
+      # token), and no dependency's install script runs with it. None is needed: the build is `tsc`,
+      # and the only dependencies with an install script are `fsevents` (macOS only) and `cypress`
+      # (its binary download, already turned off by `CYPRESS_INSTALL_BINARY`).
+      - name: Build the SDK the plugins compile against
+        if: inputs.package != '@facteur-eu/sdk'
+        working-directory: packages/sdk
+        run: |
+          npm ci --no-audit --no-fund --ignore-scripts
+          npm run build
+
+      # What is published is compiled here, so the provenance attests this build.
+      - name: Install and compile
+        working-directory: ${{ steps.locate.outputs.dir }}
+        run: |
+          npm ci --no-audit --no-fund --ignore-scripts
+          npm run build
+
+      # The tarball is what ships. Listing it first is the last chance to see a file that should not leave.
       - name: What the tarball carries
         working-directory: ${{ steps.locate.outputs.dir }}
         run: npm pack --dry-run
 
       - name: Publish
         working-directory: ${{ steps.locate.outputs.dir }}
-        run: npm publish --provenance --access public
+        # `--tag latest` is written out: npm 11 refuses to apply `latest` on its own when a higher version
+        # (here 1.0.0) is already published under the name.
+        run: npm publish --provenance --access public --tag latest

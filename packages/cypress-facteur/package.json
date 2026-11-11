@@ -1,57 +1,70 @@
 {
-  "name": "cypress-facteur",
-  "version": "1.0.0",
-  "type": "module",
-  "description": "Receive email in your Cypress tests: chainable commands, and the API key kept out of the browser",
-  "license": "MIT",
-  "keywords": [
-    "cypress",
-    "email testing",
-    "e2e",
-    "otp",
-    "2fa",
-    "qa",
-    "test automation",
-    "cypress-plugin"
-  ],
-  "engines": {
-    "node": ">=20"
-  },
-  "exports": {
-    ".": {
-      "types": "./commands.d.mts",
-      "default": "./commands.mjs"
+    "name": "cypress-facteur",
+    "version": "2.0.0",
+    "description": "Receive email in your Cypress tests: an address for each test, and a command that waits for the mail. The API key stays in Node, out of the browser.",
+    "license": "MIT",
+    "type": "module",
+    "keywords": [
+        "cypress",
+        "email testing",
+        "e2e",
+        "otp",
+        "qa"
+    ],
+    "homepage": "https://facteur.eu",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Aliud-Corp/facteur-sdk.git",
+        "directory": "packages/cypress-facteur"
     },
-    "./plugin": {
-      "types": "./plugin.d.mts",
-      "default": "./plugin.mjs"
+    "bugs": {
+        "url": "https://github.com/Aliud-Corp/facteur-sdk/issues"
+    },
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./plugin": {
+            "types": "./dist/plugin.d.ts",
+            "default": "./dist/plugin.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE"
+    ],
+    "engines": {
+        "node": ">=22"
+    },
+    "publishConfig": {
+        "access": "public",
+        "provenance": true
+    },
+    "scripts": {
+        "build": "tsc -p tsconfig.build.json",
+        "typecheck": "tsc --noEmit -p tsconfig.json",
+        "lint": "eslint . --max-warnings 0",
+        "test": "vitest run --passWithNoTests"
+    },
+    "dependencies": {
+        "@facteur-eu/sdk": "^2.0.0"
+    },
+    "peerDependencies": {
+        "cypress": ">=16.1.1"
+    },
+    "devDependencies": {
+        "@eslint/js": "10.0.1",
+        "@types/node": "24.19.0",
+        "cypress": "16.1.1",
+        "eslint": "10.4.1",
+        "globals": "17.6.0",
+        "typescript": "6.0.3",
+        "typescript-eslint": "8.59.3",
+        "vitest": "4.1.6"
     }
-  },
-  "files": [
-    "commands.mjs",
-    "commands.d.mts",
-    "plugin.mjs",
-    "plugin.d.mts",
-    "README.md",
-    "LICENSE"
-  ],
-  "dependencies": {
-    "@facteur-eu/sdk": "^1.0.0"
-  },
-  "peerDependencies": {
-    "cypress": ">=12.0.0"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/facteur-eu/facteur.git",
-    "directory": "packages/cypress-facteur"
-  },
-  "homepage": "https://facteur.eu",
-  "bugs": {
-    "url": "https://github.com/facteur-eu/facteur/issues"
-  },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
-  }
 }

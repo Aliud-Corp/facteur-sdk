@@ -1,6 +1,0 @@
-{
-  "name": "cypress-facteur-example",
-  "private": true,
-  "type": "module",
-  "description": "A real Cypress project, run against the live stack — the only thing that proves a plugin"
-}

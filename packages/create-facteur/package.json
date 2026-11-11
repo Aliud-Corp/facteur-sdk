@@ -1,40 +1,55 @@
 {
-  "name": "create-facteur",
-  "version": "1.0.0",
-  "type": "module",
-  "description": "From an empty repository to a first passing test, in one command",
-  "license": "MIT",
-  "keywords": [
-    "email testing",
-    "e2e",
-    "playwright",
-    "cypress",
-    "scaffold",
-    "qa"
-  ],
-  "engines": {
-    "node": ">=20"
-  },
-  "bin": {
-    "create-facteur": "./index.mjs"
-  },
-  "files": [
-    "index.mjs",
-    "templates",
-    "README.md",
-    "LICENSE"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/facteur-eu/facteur.git",
-    "directory": "packages/create-facteur"
-  },
-  "homepage": "https://facteur.eu",
-  "bugs": {
-    "url": "https://github.com/facteur-eu/facteur/issues"
-  },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
-  }
+    "name": "create-facteur",
+    "version": "2.0.0",
+    "description": "Write your first Facteur email test: npm create facteur asks two questions and writes a Playwright or Cypress test that receives a mail.",
+    "license": "MIT",
+    "type": "module",
+    "keywords": [
+        "create",
+        "scaffold",
+        "email testing",
+        "playwright",
+        "cypress",
+        "e2e"
+    ],
+    "homepage": "https://facteur.eu",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Aliud-Corp/facteur-sdk.git",
+        "directory": "packages/create-facteur"
+    },
+    "bugs": {
+        "url": "https://github.com/Aliud-Corp/facteur-sdk/issues"
+    },
+    "bin": {
+        "create-facteur": "./dist/cli.js"
+    },
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE"
+    ],
+    "engines": {
+        "node": ">=22"
+    },
+    "publishConfig": {
+        "access": "public",
+        "provenance": true
+    },
+    "scripts": {
+        "build": "tsc -p tsconfig.build.json",
+        "typecheck": "tsc --noEmit -p tsconfig.json",
+        "lint": "eslint . --max-warnings 0",
+        "test": "vitest run --passWithNoTests"
+    },
+    "devDependencies": {
+        "@eslint/js": "10.0.1",
+        "@playwright/test": "1.60.0",
+        "@types/node": "24.19.0",
+        "eslint": "10.4.1",
+        "globals": "17.6.0",
+        "typescript": "6.0.3",
+        "typescript-eslint": "8.59.3",
+        "vitest": "4.1.6"
+    }
 }

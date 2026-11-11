@@ -1,51 +1,54 @@
 {
-  "name": "@facteur-eu/sdk",
-  "version": "1.0.0",
-  "type": "module",
-  "description": "Receive email in your test suite, and read it back without a sleep loop",
-  "license": "MIT",
-  "keywords": [
-    "email testing",
-    "e2e",
-    "otp",
-    "2fa",
-    "smtp",
-    "qa",
-    "test automation",
-    "mailbox"
-  ],
-  "engines": {
-    "node": ">=20"
-  },
-  "exports": {
-    ".": {
-      "types": "./facteur.d.mts",
-      "default": "./facteur.mjs"
+    "name": "@facteur-eu/sdk",
+    "version": "2.0.0",
+    "description": "Read the emails Facteur receives for your tests: wait for a message, read its code and its links.",
+    "license": "MIT",
+    "type": "module",
+    "homepage": "https://facteur.eu",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Aliud-Corp/facteur-sdk.git",
+        "directory": "packages/sdk"
     },
-    "./totp": {
-      "types": "./totp.d.mts",
-      "default": "./totp.mjs"
+    "bugs": {
+        "url": "https://github.com/Aliud-Corp/facteur-sdk/issues"
+    },
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "default": "./dist/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist",
+        "README.md",
+        "LICENSE"
+    ],
+    "engines": {
+        "node": ">=22"
+    },
+    "publishConfig": {
+        "access": "public",
+        "provenance": true
+    },
+    "scripts": {
+        "openapi": "openapi-ts -f openapi-ts.config.ts",
+        "build": "tsc -p tsconfig.build.json",
+        "typecheck": "tsc --noEmit -p tsconfig.json",
+        "lint": "eslint . --max-warnings 0",
+        "test": "vitest run --passWithNoTests"
+    },
+    "devDependencies": {
+        "@eslint/js": "10.0.1",
+        "@hey-api/openapi-ts": "0.94.3",
+        "@types/node": "24.19.0",
+        "eslint": "10.4.1",
+        "globals": "17.6.0",
+        "typescript": "6.0.3",
+        "typescript-eslint": "8.59.3",
+        "vitest": "4.1.6"
     }
-  },
-  "files": [
-    "facteur.mjs",
-    "facteur.d.mts",
-    "totp.mjs",
-    "totp.d.mts",
-    "README.md",
-    "LICENSE"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/facteur-eu/facteur.git",
-    "directory": "packages/sdk"
-  },
-  "homepage": "https://facteur.eu",
-  "bugs": {
-    "url": "https://github.com/facteur-eu/facteur/issues"
-  },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
-  }
 }
