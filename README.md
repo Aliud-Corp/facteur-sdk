@@ -43,6 +43,10 @@ This repository publishes the packages and nothing else. The product is develope
 
 Packages are published from this repository by the `publish` workflow, started by hand for one package at a time. npm records this repository and that workflow as the origin of each version (provenance), and no long-lived token exists.
 
+## Security
+
+Report a vulnerability privately, never in a public issue: [SECURITY.md](SECURITY.md) gives the address, the response times and the supported versions.
+
 ## Licence
 
 MIT.

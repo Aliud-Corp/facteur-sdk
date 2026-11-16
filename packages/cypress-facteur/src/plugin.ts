@@ -49,7 +49,7 @@ export function facteurTasks(on: Cypress.PluginEvents, config: Cypress.PluginCon
     let opened: Promise<Inbox> | null = null
     let created = false
 
-    const facteur = (): Facteur => (client ??= new Facteur({ apiKey, baseUrl, maxConcurrentWaits: 2 }))
+    const facteur = (): Facteur => (client ??= new Facteur({ apiKey, baseUrl }))
 
     const inbox = (): Promise<Inbox> => {
         opened ??= (async () => {
@@ -82,7 +82,7 @@ export function facteurTasks(on: Cypress.PluginEvents, config: Cypress.PluginCon
             try {
                 // `+<tag>@` and not the bare tag: a tag that is the start of another tag does not match it.
                 // The search carries the bodies and the headers, as the read of one message does: no second call.
-                return { message: await facteur().messages.waitFor({ ...criteria, inbox: one.id as string, sentTo: `+${tag}@`, ...(timeout === undefined ? {} : { wait: timeout }) }) }
+                return { message: await facteur().messages.waitFor({ ...criteria, inbox: one.id as string, sentTo: `+${tag}@`, ...(timeout === undefined ? {} : { timeout }) }) }
             } catch (error) {
                 if (!(error instanceof FacteurTimeout)) throw error
                 return { timedOut: { criteria, waitedMs: error.waitedMs, address: `...+${tag}@${one.domain ?? 'the inbox domain'}`, arrived: error.arrived } }

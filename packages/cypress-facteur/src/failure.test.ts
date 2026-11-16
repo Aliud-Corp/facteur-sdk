@@ -8,7 +8,7 @@ const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200
 async function realTimeout(inbox: unknown[]): Promise<FacteurTimeout> {
     let call = 0
     const fetch = (async () => json(++call === 1 ? { messages: [] } : { messages: inbox })) as unknown as typeof globalThis.fetch
-    const error = await new Facteur({ apiKey: 'fk_test', baseUrl: 'https://api.test', fetch }).messages.waitFor({ inbox: 'ib1', subject: 'Invoice', wait: 1 }).catch((caught: unknown) => caught)
+    const error = await new Facteur({ apiKey: 'fk_test', baseUrl: 'https://api.test', fetch }).messages.waitFor({ inbox: 'ib1', subject: 'Invoice', timeout: 0 }).catch((caught: unknown) => caught)
     expect(error).toBeInstanceOf(FacteurTimeout)
     return error as FacteurTimeout
 }

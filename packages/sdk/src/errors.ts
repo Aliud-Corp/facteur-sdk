@@ -28,8 +28,8 @@ export class FacteurError extends Error {
     }
 }
 
-/** The criteria of a search, without the plumbing (`wait`, `limit`, `cursor`). */
-export type WaitCriteria = Omit<SearchCriteria, 'wait' | 'limit' | 'cursor'>
+/** The criteria of a search, without the plumbing of a page (`limit`, `cursor`). */
+export type WaitCriteria = Omit<SearchCriteria, 'limit' | 'cursor'>
 
 /**
  * `waitFor` ran out of time. It has its own class because a suite handles it differently from the
@@ -66,9 +66,7 @@ const PHRASES: Partial<Record<Problem['code'], string>> = {
     API_KEY_REVOKED: 'The API key was revoked. Create a new one in the application.',
     API_KEY_PERMISSION_MISSING:
         'The key does not hold the permission this call needs, and the answer body names it. A key made for a test suite reads and writes mail, and does not read the organization (org:read).',
-    TOO_MANY_WAITS:
-        'The organization already holds twenty open waits, usually a suite that fires searches without awaiting them. Lower the worker count, or lower `maxConcurrentWaits` on the client.',
-    RATE_LIMITED: 'The key made more calls than it may in a minute. The client retries; this call still failed after its retries.',
+    RATE_LIMITED: 'The key made more calls than it may in a minute (600). The client retries, and `waitFor` slows down instead of failing; this call still failed after its retries.',
     CRITERIA_UNKNOWN:
         'A search criterion does not exist. An unknown criterion is refused instead of ignored, which stops a typo from matching every message.',
     CRITERIA_EMPTY: 'A search with no criterion is not a search. To read the last messages, list the inbox instead (inboxes.messages).',
@@ -81,7 +79,6 @@ const PHRASES: Partial<Record<Problem['code'], string>> = {
     ATTACHMENT_NOT_STORED:
         'The attachment was described but never kept. Read `reason` on the message that listed it: performance mode, size or storage quota.',
     ATTACHMENT_STORE_UNAVAILABLE: 'The store of the attachments did not answer, even after the retries. Try again later.',
-    API_DRAINING: 'The API instance was stopping, even after the retries. Try again in a moment.',
     INBOX_LIMIT_REACHED: 'The plan holds no more inboxes. Delete one, or change plan.',
     WORKSPACE_LIMIT_REACHED: 'The plan holds no more workspaces.',
 }

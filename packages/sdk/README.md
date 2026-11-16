@@ -30,18 +30,18 @@ const address = addressFor(inbox, 'test-42', { local: 'signup' })
 
 // ... your application sends the confirmation mail to `address` ...
 
-const message = await facteur.messages.waitFor({ inbox: inbox.id, sentTo: address, wait: 20_000 })
+const message = await facteur.messages.waitFor({ inbox: inbox.id, sentTo: address, timeout: 20_000 })
 console.log(message.otp, message.links)
 
 await facteur.inboxes.delete(inbox.id!)
 ```
 
-`waitFor` returns the newest message that matches. When none arrives in time it rejects with a `FacteurTimeout`, never with an empty list, so a suite cannot pass on a mail that never came. The error lists the last messages that did land in the inbox (`error.arrived`), which tells "the mail was never sent" from "the mail went to another address".
+`waitFor` sends the search every second until a message matches, and returns the newest one. Unless you pass `since`, it counts the messages received from one minute before the call: the mail of an earlier run stays out, and a small difference between your clock and Facteur's does no harm. When none arrives in time it rejects with a `FacteurTimeout`, never with an empty list, so a suite cannot pass on a mail that never came. The error lists the last messages that did land in the inbox (`error.arrived`), which tells "the mail was never sent" from "the mail went to another address".
 
 ## The client
 
 ```ts
-new Facteur({ apiKey, baseUrl, fetch, timeoutMs, maxConcurrentWaits })
+new Facteur({ apiKey, baseUrl, fetch, timeoutMs, pollIntervalMs })
 ```
 
 | Option | Default |
@@ -49,8 +49,8 @@ new Facteur({ apiKey, baseUrl, fetch, timeoutMs, maxConcurrentWaits })
 | `apiKey` | `FACTEUR_API_KEY`. Without a key the constructor throws and nothing is sent. |
 | `baseUrl` | `FACTEUR_BASE_URL`, then `https://api.facteur.eu` |
 | `fetch` | the global `fetch` |
-| `timeoutMs` | 120000, added to the wait of a search |
-| `maxConcurrentWaits` | 8 |
+| `timeoutMs` | 30000, the limit of one request |
+| `pollIntervalMs` | 1000, the pause between two searches of `waitFor` |
 
 | Call | Does |
 | --- | --- |
@@ -59,8 +59,8 @@ new Facteur({ apiKey, baseUrl, fetch, timeoutMs, maxConcurrentWaits })
 | `inboxes.update(id, patch)` | changes an inbox (sent as `application/merge-patch+json`) |
 | `inboxes.delete(id)` | deletes an inbox and its messages |
 | `inboxes.messages(id, { limit?, cursor? })` | one page of the last messages: `{ messages, nextCursor }` |
-| `messages.search(criteria)` | one search (a `GET`, see "What a search sends"). Each message carries its text and HTML bodies and its headers, as `messages.get` returns it, so a link or a code is read without a second call. With `wait` (in milliseconds, 300000 at most) the server holds the request until a message matches. |
-| `messages.waitFor(criteria)` | waits 30 seconds by default and returns the newest match, bodies included |
+| `messages.search(criteria)` | one search (a `GET`, see "What a search sends"). Each message carries its text and HTML bodies and its headers, as `messages.get` returns it, so a link or a code is read without a second call. It answers at once, with an empty list when nothing matches yet. |
+| `messages.waitFor({ ...criteria, timeout? })` | searches every second, 30 seconds by default (`timeout`, in milliseconds), and returns the newest match, bodies included |
 | `messages.get(id)` | one message, by its identifier |
 | `attachments.download(id)` | the bytes of an attachment, as an `ArrayBuffer` |
 | `workspaces.list()` | lists the workspaces the key reaches (needs `org:read`) |
@@ -77,7 +77,7 @@ new Facteur({ apiKey, baseUrl, fetch, timeoutMs, maxConcurrentWaits })
 
 A search is a `GET` request, and each criterion is a parameter of its address (`/messages?inbox=ib_1&subject=Welcome`). The words you search for therefore appear in the address, and can be written in the logs of a proxy or a gateway between your machine and Facteur. Facteur keeps the parameters of this request out of its own logs. Search for an address, a subject or a code, and never for a secret.
 
-Each text has a longest allowed length, in characters: `inbox` 36, `workspace` 40, `sentTo` and `sentFrom` 254, `subject`, `body` and `attachmentName` 255, `otp` 16. A longer value is refused with the code `CRITERIA_INVALID` (status 400). A `cursor` is at most 64 characters, and a longer one is refused with `INVALID_CURSOR`, like any cursor Facteur did not issue: pass `nextCursor` back as you received it. A boolean is `true` or `false`, and `limit` and `wait` are numbers. A `wait` above 300000 milliseconds is brought down to 300000, and the search is not refused. `since` is an ISO 8601 date, such as `2026-11-03T10:00:00Z`.
+Each text has a longest allowed length, in characters: `inbox` 36, `workspace` 40, `sentTo` and `sentFrom` 254, `subject`, `body` and `attachmentName` 255, `otp` 16. A longer value is refused with the code `CRITERIA_INVALID` (status 400). A `cursor` is at most 64 characters, and a longer one is refused with `INVALID_CURSOR`, like any cursor Facteur did not issue: pass `nextCursor` back as you received it. A boolean is `true` or `false`, and `limit` is a number. `since` is an ISO 8601 date, such as `2026-11-03T10:00:00Z`.
 
 The API also takes the same criteria as a JSON body, on `POST /messages/search` (`searchMessagesByBody`), with the same limits, codes and answer. The SDK sends the `GET`; use the `POST` from another client when you do not want a criterion in an address.
 
@@ -95,11 +95,21 @@ try {
 }
 ```
 
-The client retries only what the API documents as safe to retry: a `429` (after the `Retry-After` it sends) and a `503` with `API_DRAINING` or `ATTACHMENT_STORE_UNAVAILABLE`. Three retries at most. Every other refusal is raised at once.
+The client retries only what the API documents as safe to retry: a `429` (after the `Retry-After` it sends) and a `503` with `ATTACHMENT_STORE_UNAVAILABLE`. Three retries at most. Every other refusal is raised at once.
 
 ## Many tests at once
 
-An organization may hold 20 open waits. A suite that runs 24 workers would hit that limit, so the client keeps at most 8 waits open and queues the others in its own process. Raise or lower `maxConcurrentWaits` to fit the organization.
+A test that waits sends about one search a second, and a key may send 600 requests a minute. A suite that waits in ten tests at once stays under that limit. With more, some searches answer `429`: `waitFor` waits the `Retry-After` and goes on searching until its `timeout`, so the suite slows down instead of failing. Give each process its own key when the suite runs many workers.
+
+## Versions
+
+This package follows semantic versioning. A change that breaks your code only ships in a new major version.
+
+## Support and security
+
+Version 3.x receives security fixes until 15 November 2031, five years after 3.0.0 was released. Versions 2.0.0, 1.0.0 and 0.0.0 receive none: they target an API that no longer exists. Upgrade to 3.x.
+
+To report a vulnerability, email security@facteur.eu or use the private reporting of the repository, never a public issue. The [security policy](https://github.com/Aliud-Corp/facteur-sdk/blob/main/SECURITY.md) says what happens next. Each [release](https://github.com/Aliud-Corp/facteur-sdk/releases) carries the software bill of materials (CycloneDX) of its version.
 
 ## Licence
 

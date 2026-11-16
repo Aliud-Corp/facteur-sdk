@@ -28,8 +28,6 @@ const problem = (code: Problem['code'], status: number, headers: Record<string, 
 const client = (fetch: typeof globalThis.fetch, extra: Record<string, unknown> = {}) =>
     new Facteur({ apiKey: 'fk_secret', baseUrl: 'https://api.test', fetch, ...extra })
 
-const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
-
 afterEach(() => {
     vi.useRealTimers()
     vi.unstubAllEnvs()
@@ -52,14 +50,13 @@ describe('requests', () => {
 
     it('writes booleans as true or false and numbers as digits, the only spellings the API accepts', async () => {
         const fake = fakeFetch(() => json({ messages: [] }))
-        await client(fake.fetch).messages.search({ inbox: 'ib1', hasOtp: true, hasAttachment: false, limit: 10, wait: 2000, type: 'sms' })
+        await client(fake.fetch).messages.search({ inbox: 'ib1', hasOtp: true, hasAttachment: false, limit: 10, type: 'sms' })
 
         expect(Object.fromEntries(new URL(fake.requests[0].url).searchParams)).toEqual({
             inbox: 'ib1',
             hasOtp: 'true',
             hasAttachment: 'false',
             limit: '10',
-            wait: '2000',
             type: 'sms',
         })
     })
@@ -108,13 +105,65 @@ describe('requests', () => {
     })
 })
 
+/**
+ * The wait is the client's (A118): the API answers every search at once, and `waitFor` searches again every second.
+ *
+ * @spec CORE-10
+ */
 describe('waitFor', () => {
-    it('returns the newest message and sends the wait to the server', async () => {
+    /** A sleep that does not sleep and remembers how long it was asked to. */
+    const recordedSleep = () => {
+        const asked: number[] = []
+        return { asked, sleep: async (ms: number) => void asked.push(ms) }
+    }
+
+    it('returns the newest message of the first search that finds one, and never sends a wait to the server', async () => {
         const fake = fakeFetch(() => json({ messages: [{ id: 'newest' }, { id: 'older' }] }))
         const message = await client(fake.fetch).messages.waitFor({ inbox: 'ib1', subject: 'Code' })
 
         expect(message.id).toBe('newest')
-        expect(Object.fromEntries(new URL(fake.requests[0].url).searchParams)).toEqual({ inbox: 'ib1', subject: 'Code', wait: '30000' })
+        expect(fake.calls).toHaveBeenCalledTimes(1)
+        const sent = Object.fromEntries(new URL(fake.requests[0].url).searchParams)
+        expect(Object.keys(sent).sort()).toEqual(['inbox', 'since', 'subject'])
+    })
+
+    it('searches again every second until a message matches', async () => {
+        const { asked, sleep } = recordedSleep()
+        const fake = fakeFetch(
+            () => json({ messages: [] }),
+            () => json({ messages: [] }),
+            () => json({ messages: [{ id: 'arrived' }] }),
+        )
+        const message = await client(fake.fetch, { sleep }).messages.waitFor({ inbox: 'ib1' })
+
+        expect(message.id).toBe('arrived')
+        expect(fake.calls).toHaveBeenCalledTimes(3)
+        expect(asked).toEqual([1000, 1000])
+    })
+
+    it('reads only what arrived from one minute before the call, unless the caller says when', async () => {
+        vi.useFakeTimers({ now: new Date('2026-11-15T10:00:00.000Z'), toFake: ['Date'] })
+        const fake = fakeFetch(() => json({ messages: [{ id: 'm1' }] }))
+        await client(fake.fetch).messages.waitFor({ inbox: 'ib1' })
+        await client(fake.fetch).messages.waitFor({ inbox: 'ib1', since: '2026-11-15T09:00:00Z' })
+
+        expect(new URL(fake.requests[0].url).searchParams.get('since')).toBe('2026-11-15T09:59:00.000Z')
+        expect(new URL(fake.requests[1].url).searchParams.get('since')).toBe('2026-11-15T09:00:00Z')
+    })
+
+    it('slows down on the limit of the key instead of failing, and finds the message after it', async () => {
+        const { asked, sleep } = recordedSleep()
+        const fake = fakeFetch(
+            () => problem('RATE_LIMITED', 429, { 'retry-after': '0' }),
+            () => problem('RATE_LIMITED', 429, { 'retry-after': '0' }),
+            () => problem('RATE_LIMITED', 429, { 'retry-after': '0' }),
+            () => problem('RATE_LIMITED', 429, { 'retry-after': '0' }),
+            () => json({ messages: [{ id: 'after-the-limit' }] }),
+        )
+        const message = await client(fake.fetch, { sleep }).messages.waitFor({ inbox: 'ib1' })
+
+        expect(message.id).toBe('after-the-limit')
+        expect(asked.at(-1)).toBe(1000)
     })
 
     it('rejects with a FacteurTimeout that lists what arrived instead, read from the inbox listing', async () => {
@@ -123,13 +172,13 @@ describe('waitFor', () => {
             () => json({ messages: [{ id: 'm9', toAddress: 'other@x.test', subject: 'Hello', status: 'parsed' }] }),
         )
         const error = await client(fake.fetch)
-            .messages.waitFor({ inbox: 'ib1', subject: 'Code', wait: 1 })
+            .messages.waitFor({ inbox: 'ib1', subject: 'Code', since: '2026-11-15T10:00:00Z', timeout: 0 })
             .catch((caught: unknown) => caught)
 
         expect(error).toBeInstanceOf(FacteurTimeout)
         const timeout = error as FacteurTimeout
         expect(timeout.code).toBe('MESSAGE_NOT_RECEIVED')
-        expect(timeout.criteria).toEqual({ inbox: 'ib1', subject: 'Code' })
+        expect(timeout.criteria).toEqual({ inbox: 'ib1', subject: 'Code', since: '2026-11-15T10:00:00Z' })
         expect(timeout.arrived.map((one) => one.id)).toEqual(['m9'])
         expect(timeout.message).toContain('other@x.test')
         expect(fake.requests[1].method).toBe('GET')
@@ -139,28 +188,17 @@ describe('waitFor', () => {
     it('keeps the timeout when the diagnostic itself fails', async () => {
         const fake = fakeFetch(() => json({ messages: [] }), () => problem('INTERNAL_ERROR', 500))
         const error = await client(fake.fetch)
-            .messages.waitFor({ inbox: 'ib1', subject: 'Code', wait: 1 })
+            .messages.waitFor({ inbox: 'ib1', subject: 'Code', timeout: 0 })
             .catch((caught: unknown) => caught)
 
         expect(error).toBeInstanceOf(FacteurTimeout)
         expect((error as FacteurTimeout).arrived).toEqual([])
     })
 
-    it('holds the 9th wait until one of the 8 ends', async () => {
-        const open: Array<(response: Response) => void> = []
-        const fake = fakeFetch(() => new Promise<Response>((resolve) => open.push(resolve)))
-        const facteur = client(fake.fetch)
-
-        const waits = Array.from({ length: 9 }, (_, index) => facteur.messages.waitFor({ inbox: `ib${index}`, wait: 10 }))
-        await tick()
-        expect(fake.calls).toHaveBeenCalledTimes(8)
-
-        open[0](json({ messages: [{ id: 'first' }] }))
-        await tick()
-        expect(fake.calls).toHaveBeenCalledTimes(9)
-
-        open.slice(1).forEach((resolve) => resolve(json({ messages: [{ id: 'later' }] })))
-        await expect(Promise.all(waits)).resolves.toHaveLength(9)
+    it('raises at once a refusal that is not the limit of the key', async () => {
+        const fake = fakeFetch(() => problem('CRITERIA_UNKNOWN', 400))
+        await expect(client(fake.fetch).messages.waitFor({ inbox: 'ib1' })).rejects.toMatchObject({ code: 'CRITERIA_UNKNOWN' })
+        expect(fake.calls).toHaveBeenCalledTimes(1)
     })
 })
 
@@ -177,8 +215,8 @@ describe('retries', () => {
         expect(fake.calls).toHaveBeenCalledTimes(2)
     })
 
-    it.each(['API_DRAINING', 'ATTACHMENT_STORE_UNAVAILABLE'] as const)('retries a 503 %s', async (code) => {
-        const fake = fakeFetch(() => problem(code, 503, { 'retry-after': '0' }), () => json({ id: 'm1' }))
+    it('retries a 503 ATTACHMENT_STORE_UNAVAILABLE', async () => {
+        const fake = fakeFetch(() => problem('ATTACHMENT_STORE_UNAVAILABLE', 503, { 'retry-after': '0' }), () => json({ id: 'm1' }))
         const message = await client(fake.fetch).messages.get('m1')
 
         expect(message.id).toBe('m1')

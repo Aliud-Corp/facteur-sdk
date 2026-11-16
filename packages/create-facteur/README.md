@@ -47,6 +47,16 @@ It prints three lines:
 2. the API key, in `FACTEUR_API_KEY`, in the environment of the process that runs the tests. Create it under Settings, API keys; a key that reads and writes mail is enough. The command writes no key into any file;
 3. the command that runs the test.
 
+## Versions
+
+This package follows semantic versioning. A change that breaks your code only ships in a new major version.
+
+## Support and security
+
+Version 3.x receives security fixes until 15 November 2031, five years after 3.0.0 was released. Versions 2.0.0, 1.0.0 and 0.0.0 receive none: they target an API that no longer exists. Upgrade to 3.x.
+
+To report a vulnerability, email security@facteur.eu or use the private reporting of the repository, never a public issue. The [security policy](https://github.com/Aliud-Corp/facteur-sdk/blob/main/SECURITY.md) says what happens next. Each [release](https://github.com/Aliud-Corp/facteur-sdk/releases) carries the software bill of materials (CycloneDX) of its version.
+
 ## Licence
 
 MIT.

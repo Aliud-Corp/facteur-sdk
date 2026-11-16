@@ -1,28 +1,6 @@
 import type { Problem } from './generated/types.gen.js'
 import { codeOf } from './errors.js'
 
-/** A counting semaphore: the surplus waits here instead of becoming a 429 from the API. */
-export function semaphore(limit: number): <T>(task: () => Promise<T>) => Promise<T> {
-    let inFlight = 0
-    const waiting: Array<() => void> = []
-
-    const release = () => {
-        const next = waiting.shift()
-        if (next) next()
-        else inFlight -= 1
-    }
-
-    return async function run<T>(task: () => Promise<T>): Promise<T> {
-        if (inFlight >= limit) await new Promise<void>((resolve) => waiting.push(resolve))
-        else inFlight += 1
-        try {
-            return await task()
-        } finally {
-            release()
-        }
-    }
-}
-
 /** `Retry-After` in either shape the RFC allows: seconds, or an HTTP date. */
 export function retryAfterMs(header: string | null): number | null {
     if (!header) return null
@@ -36,12 +14,12 @@ export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(r
 
 const MAX_RETRIES = 3
 
-/** The 503 answers that mean "ask again": an instance that stops, and the attachment store. */
-const RETRIED_503: readonly Problem['code'][] = ['API_DRAINING', 'ATTACHMENT_STORE_UNAVAILABLE']
+/** The 503 answer that means "ask again": the attachment store. */
+const RETRIED_503: readonly Problem['code'][] = ['ATTACHMENT_STORE_UNAVAILABLE']
 
 /**
  * A `fetch` that retries what the API documents as retryable and nothing else: a 429 (after
- * `Retry-After`) and the two 503 answers above. A 4xx about the contract is never retried:
+ * `Retry-After`) and the 503 answer above. A 4xx about the contract is never retried:
  * `CRITERIA_UNKNOWN` stays wrong however many times it is sent.
  *
  * It receives the `Request` the generated client built, and clones it for each attempt.

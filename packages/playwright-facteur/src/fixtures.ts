@@ -42,15 +42,12 @@ type WorkerFixtures = { facteur: Facteur; facteurInbox: Inbox }
 const runId = (process.env.FACTEUR_RUN ??= Date.now().toString(36))
 
 export const test = base.extend<TestFixtures, WorkerFixtures>({
-    // The client, one per worker: it holds the queue of waits, which is per process.
+    // The client, one per worker.
     facteur: [
         // Playwright reads the fixtures a function needs from its first parameter, which must be a destructuring.
         // eslint-disable-next-line no-empty-pattern
-        async ({}, use, workerInfo) => {
-            // The API refuses past twenty open waits per organization, shared by every process that uses
-            // the organization's keys: a worker keeps a share of sixteen, at least one.
-            const share = Math.max(1, Math.floor(16 / Math.max(1, workerInfo.config.workers)))
-            await use(new Facteur({ maxConcurrentWaits: share }))
+        async ({}, use) => {
+            await use(new Facteur())
         },
         { scope: 'worker' },
     ],
@@ -100,7 +97,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
                 const { timeout, ...search } = criteria
                 const wait = boundedWait(testInfo, startedAt, timeout)
                 // `+<tag>@` and not the bare tag: a tag that is the start of another tag does not match it.
-                const found = await facteur.messages.waitFor({ ...search, inbox: inboxId, sentTo: `+${tag}@`, wait })
+                const found = await facteur.messages.waitFor({ ...search, inbox: inboxId, sentTo: `+${tag}@`, timeout: wait })
                 // The search carries the bodies and the headers, as the read of one message does: no second call.
                 latest = found
                 await attach(testInfo, found)

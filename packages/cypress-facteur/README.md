@@ -67,7 +67,7 @@ describe('sign up', () => {
 | Command | Yields |
 | --- | --- |
 | `cy.facteurAddress(local?)` | The address of this test. `local` is the text before the `+`, `test` by default. |
-| `cy.facteurWaitFor(criteria?)` | The first mail sent to this address that matches. The criteria are the SDK's: `subject`, `body`, `sentFrom`, `otp`, `attachmentName`... plus `timeout` in milliseconds, 30 seconds by default. |
+| `cy.facteurWaitFor(criteria?)` | The first mail sent to this address that matches. The criteria are the SDK's: `subject`, `body`, `sentFrom`, `otp`, `attachmentName`... plus `timeout` in milliseconds, 30 seconds by default. The plugin searches every second until the mail is there. |
 | `cy.facteurMessages()` | The last messages of the whole inbox, whatever their address. |
 | `cy.facteurInbox()` | The inbox this run uses: its id and the domain it receives at. |
 | `cy.facteurPurge()` | Deletes the inbox the plugin opened. |
@@ -92,6 +92,16 @@ The tag is worked out from the running test each time a command asks. It is stor
 ## Where the key goes
 
 A spec is served to a page, so a key used there is a key in the page. The commands call `cy.task`, which runs in Node, where the plugin holds the client. `facteurTasks` reads the key from the environment of the Node process and keeps it there. If you passed it in `config.env` anyway (older versions of Cypress hand that to the browser as `Cypress.env()`), the config it returns no longer holds it. The browser gets one value only, `FACTEUR_RUN`, which is not a secret.
+
+## Versions
+
+This package follows semantic versioning. A change that breaks your code only ships in a new major version. It is tested with Cypress 16.1 and accepts any later 16.x release. A new major version of Cypress is accepted once this package has been tested with it.
+
+## Support and security
+
+Version 3.x receives security fixes until 15 November 2031, five years after 3.0.0 was released. Versions 2.0.0, 1.0.0 and 0.0.0 receive none: they target an API that no longer exists. Upgrade to 3.x.
+
+To report a vulnerability, email security@facteur.eu or use the private reporting of the repository, never a public issue. The [security policy](https://github.com/Aliud-Corp/facteur-sdk/blob/main/SECURITY.md) says what happens next. Each [release](https://github.com/Aliud-Corp/facteur-sdk/releases) carries the software bill of materials (CycloneDX) of its version.
 
 ## Licence
 

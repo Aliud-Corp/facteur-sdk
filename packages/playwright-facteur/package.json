@@ -1,6 +1,6 @@
 {
     "name": "playwright-facteur",
-    "version": "2.0.0",
+    "version": "3.0.0",
     "description": "Receive email in your Playwright tests: an inbox fixture, matchers for codes, links and attachments, and the message attached to the report.",
     "license": "MIT",
     "type": "module",
@@ -49,10 +49,10 @@
         "test": "vitest run --passWithNoTests"
     },
     "dependencies": {
-        "@facteur-eu/sdk": "^2.0.0"
+        "@facteur-eu/sdk": "^3.0.0"
     },
     "peerDependencies": {
-        "@playwright/test": ">=1.60.0"
+        "@playwright/test": ">=1.60.0 <2"
     },
     "devDependencies": {
         "@eslint/js": "10.0.1",
@@ -62,6 +62,9 @@
         "globals": "17.6.0",
         "typescript": "6.0.3",
         "typescript-eslint": "8.59.3",
-        "vitest": "4.1.6"
+        "vitest": "4.1.12"
+    },
+    "overrides": {
+        "minimatch": "11.0.8"
     }
 }

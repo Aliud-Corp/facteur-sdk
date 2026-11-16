@@ -1,6 +1,6 @@
 {
     "name": "@facteur-eu/sdk",
-    "version": "2.0.0",
+    "version": "3.0.0",
     "description": "Read the emails Facteur receives for your tests: wait for a message, read its code and its links.",
     "license": "MIT",
     "type": "module",
@@ -43,12 +43,16 @@
     },
     "devDependencies": {
         "@eslint/js": "10.0.1",
-        "@hey-api/openapi-ts": "0.94.3",
+        "@hey-api/openapi-ts": "0.97.3",
         "@types/node": "24.19.0",
         "eslint": "10.4.1",
         "globals": "17.6.0",
         "typescript": "6.0.3",
         "typescript-eslint": "8.59.3",
-        "vitest": "4.1.6"
+        "vitest": "4.1.12"
+    },
+    "overrides": {
+        "minimatch": "11.0.8",
+        "js-yaml": "4.3.2"
     }
 }

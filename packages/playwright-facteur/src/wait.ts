@@ -1,6 +1,6 @@
 import type { TestInfo } from '@playwright/test'
 
-/** The API holds a wait for five minutes at most. */
+/** The longest wait the plugin keeps searching for, when the test has no timeout of its own: five minutes. */
 const MAX_WAIT_MS = 300_000
 /** Left to the test after the wait, to write the failure message inside the test's timeout. */
 const MARGIN_MS = 2_000

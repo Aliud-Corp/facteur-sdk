@@ -1,6 +1,6 @@
 {
     "name": "create-facteur",
-    "version": "2.0.0",
+    "version": "3.0.0",
     "description": "Write your first Facteur email test: npm create facteur asks two questions and writes a Playwright or Cypress test that receives a mail.",
     "license": "MIT",
     "type": "module",
@@ -50,6 +50,9 @@
         "globals": "17.6.0",
         "typescript": "6.0.3",
         "typescript-eslint": "8.59.3",
-        "vitest": "4.1.6"
+        "vitest": "4.1.12"
+    },
+    "overrides": {
+        "minimatch": "11.0.8"
     }
 }

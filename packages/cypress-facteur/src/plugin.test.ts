@@ -84,7 +84,7 @@ describe('facteurTasks', () => {
         // The message of the search carries its bodies: the task does not read it a second time.
         expect(answer).toEqual({ message: { id: 'm1', subject: 'Hello', textBody: 'Your code is 482913' } })
         expect(sdk.get).not.toHaveBeenCalled()
-        expect(sdk.waitFor).toHaveBeenCalledWith({ inbox: 'abcd1234', sentTo: '+my-tag@', subject: 'Hello', wait: 5000 })
+        expect(sdk.waitFor).toHaveBeenCalledWith({ inbox: 'abcd1234', sentTo: '+my-tag@', subject: 'Hello', timeout: 5000 })
     })
 
     it('turns a timeout into a value, with what did arrive, instead of a rejected task', async () => {

@@ -66,7 +66,7 @@ The tag in the address is built from four things:
 
 ## How long a test waits
 
-A wait lasts as long as what is left of the test's own timeout, less two seconds, with five minutes at most. When the mail does not come, the failure is written by this package, inside the test's timeout, instead of Playwright's message about a slow test:
+The plugin searches for the mail every second. A wait lasts as long as what is left of the test's own timeout, less two seconds, with five minutes at most. A key may send 600 requests a minute: past that, the plugin waits the `Retry-After` of the `429` and goes on, so a suite with many workers slows down instead of failing. When the mail does not come, the failure is written by this package, inside the test's timeout, instead of Playwright's message about a slow test:
 
 ```
 No message matched {"subject":"Your invoice"} at test+<tag>@<id>.inbox.facteur.eu.
@@ -98,6 +98,16 @@ Each message `waitFor` returns is attached to the test in the report: `facteur-<
 | `FACTEUR_INBOX` | The id of the inbox to use. Without it each worker opens its own. |
 | `FACTEUR_WORKSPACE` | The slug of the workspace in which workers open their inbox. |
 | `FACTEUR_BASE_URL` | The address of the API. Defaults to `https://api.facteur.eu`. |
+
+## Versions
+
+This package follows semantic versioning. A change that breaks your code only ships in a new major version. It is tested with Playwright 1.60 and accepts any later 1.x release. Playwright 2 will need a new major version of this package.
+
+## Support and security
+
+Version 3.x receives security fixes until 15 November 2031, five years after 3.0.0 was released. Versions 2.0.0, 1.0.0 and 0.0.0 receive none: they target an API that no longer exists. Upgrade to 3.x.
+
+To report a vulnerability, email security@facteur.eu or use the private reporting of the repository, never a public issue. The [security policy](https://github.com/Aliud-Corp/facteur-sdk/blob/main/SECURITY.md) says what happens next. Each [release](https://github.com/Aliud-Corp/facteur-sdk/releases) carries the software bill of materials (CycloneDX) of its version.
 
 ## Licence
 

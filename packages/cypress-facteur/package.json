@@ -1,6 +1,6 @@
 {
     "name": "cypress-facteur",
-    "version": "2.0.0",
+    "version": "3.0.0",
     "description": "Receive email in your Cypress tests: an address for each test, and a command that waits for the mail. The API key stays in Node, out of the browser.",
     "license": "MIT",
     "type": "module",
@@ -52,10 +52,10 @@
         "test": "vitest run --passWithNoTests"
     },
     "dependencies": {
-        "@facteur-eu/sdk": "^2.0.0"
+        "@facteur-eu/sdk": "^3.0.0"
     },
     "peerDependencies": {
-        "cypress": ">=16.1.1"
+        "cypress": ">=16.1.1 <17"
     },
     "devDependencies": {
         "@eslint/js": "10.0.1",
@@ -65,6 +65,9 @@
         "globals": "17.6.0",
         "typescript": "6.0.3",
         "typescript-eslint": "8.59.3",
-        "vitest": "4.1.6"
+        "vitest": "4.1.12"
+    },
+    "overrides": {
+        "minimatch": "11.0.8"
     }
 }

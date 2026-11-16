@@ -10,6 +10,11 @@
 # Publish in order, one package at a time: `@facteur-eu/sdk` first, since the plugins depend on it.
 #
 # No token and no secret: the publication trades the OIDC token of the run for the right to publish.
+#
+# Each publication also leaves a GitHub release named `<package>@<version>`, which carries the
+# software bill of materials (SBOM) of what was published: a CycloneDX file written by `npm sbom`
+# from the lock file of the build, runtime dependencies only. The security policy (SECURITY.md)
+# promises it to whoever has to answer "does this vulnerability reach me".
 
 name: publish
 
@@ -26,15 +31,21 @@ on:
           - cypress-facteur
           - create-facteur
 
-permissions:
-  # `id-token: write` mints the OIDC token npm trades for trusted publishing and provenance. Naming
-  # one permission sets every other to none, so `contents: read` is written rather than inherited.
-  contents: read
-  id-token: write
+# Nothing at the top: each job names what it needs. Naming one permission sets every other to none.
+permissions: {}
 
 jobs:
   publish:
     name: ${{ inputs.package }}
+    # `id-token: write` mints the OIDC token npm trades for trusted publishing and provenance.
+    # `contents: read` is written rather than inherited. No write on the repository here: the job
+    # that holds the right to publish cannot change the repository, and the release job below cannot publish.
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      tag: ${{ steps.sbom.outputs.tag }}
+      sbom: ${{ steps.sbom.outputs.file }}
     # A publication comes from main: the provenance names the commit, and a branch is not reviewed.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
@@ -96,6 +107,28 @@ jobs:
           npm ci --no-audit --no-fund --ignore-scripts
           npm run build
 
+      # The SBOM of what is about to ship, written from the lock file this build installed. `--omit dev`: the
+      # build tools never reach a user; `--sbom-type library`: the package is a library, not an application.
+      - name: Software bill of materials (CycloneDX)
+        id: sbom
+        working-directory: ${{ steps.locate.outputs.dir }}
+        env:
+          PACKAGE: ${{ inputs.package }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          file="$(basename "$PWD")-${version}.cdx.json"
+          npm sbom --sbom-format cyclonedx --omit dev --sbom-type library > "$RUNNER_TEMP/$file"
+          node -e 'const b = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); if (b.bomFormat !== "CycloneDX") process.exit(1)' "$RUNNER_TEMP/$file"
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+          echo "tag=${PACKAGE}@${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Keep the SBOM for the release job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: sbom
+          path: ${{ runner.temp }}/${{ steps.sbom.outputs.file }}
+          if-no-files-found: error
+
       # The tarball is what ships. Listing it first is the last chance to see a file that should not leave.
       - name: What the tarball carries
         working-directory: ${{ steps.locate.outputs.dir }}
@@ -106,3 +139,31 @@ jobs:
         # `--tag latest` is written out: npm 11 refuses to apply `latest` on its own when a higher version
         # (here 1.0.0) is already published under the name.
         run: npm publish --provenance --access public --tag latest
+
+  # After the publication, never before: a release names a version that npm holds. When this job fails,
+  # "Re-run failed jobs" replays it alone, with the SBOM the publish job kept; the publication is not replayed.
+  github-release:
+    name: release ${{ needs.publish.outputs.tag }}
+    needs: publish
+    runs-on: ubuntu-latest
+    # Creating a release and its tag is a write on the repository, and the only one this workflow makes.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: sbom
+          path: ${{ runner.temp }}/sbom
+
+      - name: Release with the SBOM attached
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.publish.outputs.tag }}
+          SBOM: ${{ runner.temp }}/sbom/${{ needs.publish.outputs.sbom }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$SBOM" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" "$SBOM" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "$TAG" \
+              --notes "Published on npm with provenance. The attached file is the CycloneDX software bill of materials of this version (runtime dependencies). Security policy: SECURITY.md."
+          fi

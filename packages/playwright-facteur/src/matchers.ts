@@ -31,8 +31,8 @@ export const expect = base.extend({
     /**
      * `await expect(inbox).toReceiveEmail({ subject: 'code' })`.
      *
-     * The wait is the server's: the criteria go out once and the connection answers as soon as a message
-     * matches. The criteria are Facteur's (substrings of the subject, the body, the sender...). The message found is
+     * The client searches every second until a message matches or the time runs out; the API holds nothing
+     * open. The criteria are Facteur's (substrings of the subject, the body, the sender...). The message found is
      * kept on the inbox (`inbox.latest`) and attached to the report.
      */
     async toReceiveEmail(this: ExpectMatcherState, inbox: TestInbox, criteria: ReceiveCriteria = {}): Promise<MatcherReturnType> {

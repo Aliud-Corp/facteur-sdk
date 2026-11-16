@@ -35,19 +35,28 @@ import type {
 import { addressFor } from './address.js'
 import { FacteurError, FacteurTimeout, codeOf, explain } from './errors.js'
 import type { SearchCriteria, WaitCriteria } from './errors.js'
-import { retrying, semaphore } from './transport.js'
+import { retrying, sleep } from './transport.js'
 
 /** Where the API answers, unless a caller says otherwise. The generated client carries no address. */
 const DEFAULT_BASE_URL = 'https://api.facteur.eu'
 
-/** How long `waitFor` holds by default: the length of a signup journey. The API itself does not wait unless asked (its `wait` defaults to 0). */
+/** How long `waitFor` waits by default: the length of a signup journey. */
 const DEFAULT_WAIT_MS = 30_000
 
 /**
- * How many waits this client holds open at once. The ceiling is per organization (20), so two suites
- * that share a key share it: a client that spent it alone would push the failure onto the second.
+ * How often `waitFor` searches again. The API answers every search at once and holds nothing open: the
+ * wait is this loop. A mail is almost always analysed within a second of its arrival.
  */
-const DEFAULT_MAX_WAITS = 8
+const DEFAULT_POLL_INTERVAL_MS = 1_000
+
+/**
+ * What `waitFor` reads as "now" when the caller gives no `since`: one minute earlier. It keeps the mail of an
+ * earlier run out, and it absorbs a clock of this machine that runs ahead of the server's.
+ */
+const SINCE_MARGIN_MS = 60_000
+
+/** What `waitFor` waits on a 429 that carries no `Retry-After`. */
+const RATE_LIMITED_PAUSE_MS = 1_000
 
 export type FacteurOptions = {
     /** Defaults to `FACTEUR_API_KEY`. */
@@ -56,11 +65,16 @@ export type FacteurOptions = {
     baseUrl?: string
     /** A replacement for the global `fetch`, for tests. */
     fetch?: typeof fetch
-    /** The limit of one request, on top of the wait for a search. Default 120000. */
+    /** The limit of one request. Default 30000. */
     timeoutMs?: number
-    /** How many waits run at once; the others queue in this process. Default 8. */
-    maxConcurrentWaits?: number
+    /** How often `waitFor` searches again, in milliseconds. Default 1000. */
+    pollIntervalMs?: number
+    /** What `waitFor` sleeps with, for tests. */
+    sleep?: (ms: number) => Promise<void>
 }
+
+/** The criteria `waitFor` takes: those of a search, plus how long to wait at most (milliseconds, 30000 by default). */
+export type WaitForCriteria = WaitCriteria & { timeout?: number }
 
 export type CreateInboxInput = InboxCreateInboxRequest & {
     /** The slug of the workspace. Without it, the default workspace is looked up (needs `org:read`). */
@@ -79,7 +93,7 @@ export class Facteur {
     }
     readonly messages: {
         search: (criteria: SearchCriteria) => Promise<MessagePage>
-        waitFor: (criteria: WaitCriteria & { wait?: number }) => Promise<Message>
+        waitFor: (criteria: WaitForCriteria) => Promise<Message>
         get: (id: string) => Promise<Message>
     }
     readonly attachments: { download: (id: string) => Promise<ArrayBuffer> }
@@ -100,7 +114,8 @@ export class Facteur {
 
     readonly #client: Client
     readonly #timeoutMs: number
-    readonly #gate: ReturnType<typeof semaphore>
+    readonly #pollIntervalMs: number
+    readonly #sleep: (ms: number) => Promise<void>
     #defaultWorkspace: string | null = null
 
     constructor(options: FacteurOptions = {}) {
@@ -110,14 +125,15 @@ export class Facteur {
                 'No API key. Pass `apiKey`, or set FACTEUR_API_KEY. Create the key in the application, under Settings, API keys.',
             )
         }
-        this.#timeoutMs = options.timeoutMs ?? 120_000
-        this.#gate = semaphore(options.maxConcurrentWaits ?? DEFAULT_MAX_WAITS)
+        this.#timeoutMs = options.timeoutMs ?? 30_000
+        this.#pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS
+        this.#sleep = options.sleep ?? sleep
         // The key goes in the `Authorization` header (the generated operations declare a bearer
         // scheme), never in the address.
         this.#client = createClient(
             createConfig({
                 baseUrl: (options.baseUrl ?? process.env.FACTEUR_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/+$/, ''),
-                fetch: retrying(options.fetch ?? globalThis.fetch),
+                fetch: retrying(options.fetch ?? globalThis.fetch, this.#sleep),
                 auth: apiKey,
                 throwOnError: false,
             }),
@@ -184,8 +200,8 @@ export class Facteur {
         return addressFor(...args)
     }
 
-    #signal(extraMs = 0): AbortSignal {
-        return AbortSignal.timeout(this.#timeoutMs + extraMs)
+    #signal(): AbortSignal {
+        return AbortSignal.timeout(this.#timeoutMs)
     }
 
     /** Unwraps a generated call: the data, or a `FacteurError` built from the problem body. */
@@ -246,27 +262,40 @@ export class Facteur {
         return chosen.slug
     }
 
-    /** A search that waits goes through the local queue; one that does not, goes straight out. */
+    /** One search: the API answers at once with what matches now. */
     #search(criteria: SearchCriteria): Promise<MessagePage> {
-        const run = () =>
-            this.#call<MessagePage>(
-                '/messages',
-                searchMessages({ client: this.#client, query: criteria, signal: this.#signal(criteria.wait ?? 0) }),
-            )
-        return criteria.wait && criteria.wait > 0 ? this.#gate(run) : run()
+        return this.#call<MessagePage>('/messages', searchMessages({ client: this.#client, query: criteria, signal: this.#signal() }))
     }
 
     /**
-     * Waits for one message and returns the newest match. It rejects when none comes: a list would
-     * force every caller to rewrite the same assertion, and the suite that forgets goes green on a
-     * mail that never arrived. The rejection says what arrived instead, read from the inbox listing.
+     * Waits for one message and returns the newest match: it searches, and searches again every
+     * `pollIntervalMs` until a message matches or `timeout` runs out, with one last search at the end. The
+     * API holds nothing open. It rejects when none comes: a list would force every caller to rewrite the same
+     * assertion, and the suite that forgets goes green on a mail that never arrived. The rejection says what
+     * arrived instead, read from the inbox listing.
+     *
+     * A 429 is the limit of the key (600 calls a minute), which a suite with many workers on one key can
+     * reach: it slows the wait down instead of ending it, until the timeout.
      */
-    async #waitFor(criteria: WaitCriteria & { wait?: number }): Promise<Message> {
+    async #waitFor(criteria: WaitForCriteria): Promise<Message> {
         const started = Date.now()
-        const { wait = DEFAULT_WAIT_MS, ...searched } = criteria
-        const page = await this.#search({ ...searched, wait })
-        const first = page.messages?.[0]
-        if (first) return first
+        const { timeout = DEFAULT_WAIT_MS, ...rest } = criteria
+        const deadline = started + timeout
+        const searched: WaitCriteria = { ...rest, since: rest.since ?? new Date(started - SINCE_MARGIN_MS).toISOString() }
+
+        for (;;) {
+            let pause = this.#pollIntervalMs
+            try {
+                const first = (await this.#search(searched)).messages?.[0]
+                if (first) return first
+            } catch (error) {
+                if (!(error instanceof FacteurError && error.code === 'RATE_LIMITED')) throw error
+                pause = Math.max(pause, retryAfterOf(error) ?? RATE_LIMITED_PAUSE_MS)
+            }
+            const left = deadline - Date.now()
+            if (left <= 0) break
+            await this.#sleep(Math.min(pause, left))
+        }
 
         const waitedMs = Date.now() - started
         const arrived = await this.#whatArrivedInstead(searched)
@@ -297,6 +326,12 @@ export class Facteur {
             return []
         }
     }
+}
+
+/** The `Retry-After` of a refusal, in milliseconds, when its answer said one. */
+function retryAfterOf(error: FacteurError): number | null {
+    const body = error.body as { retryAfter?: unknown } | null
+    return typeof body?.retryAfter === 'number' ? body.retryAfter * 1000 : null
 }
 
 /** One line about a message that is not the one being waited for. */
